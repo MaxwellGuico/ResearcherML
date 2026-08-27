@@ -1,0 +1,27 @@
+# Dataset and downloaded archives
+KuaiRand-Pure/
+*.tar.gz
+
+# Secrets and local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Agent-generated artifacts
+checkpoints/
+runs/
+logs/
+submission*.csv
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
