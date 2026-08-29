@@ -55,7 +55,11 @@ def main() -> None:
     )
     results = loop.run(args.cycles)
     logger.log_action("research_run_finished", details={"cycles_completed": len(results), "stop_reason": controller.state.stop_reason})
-    final = finalize_run(store, contract=contract)
+    try:
+        final = finalize_run(store, contract=contract)
+    except Exception as exc:
+        logger.log_action("finalization_failed", details={"error": f"{type(exc).__name__}: {exc}", "recovery": "no automatic retry available"})
+        raise
     print(f"Selected: {final.selected_experiment_id} (validation primary {final.selection_primary:.4f})")
     if final.test_metrics:
         print(f"Final test confirmation: {final.test_metrics['primary']:.4f}")
