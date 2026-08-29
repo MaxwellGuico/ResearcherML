@@ -1,6 +1,7 @@
 """Final, explicitly authorised test confirmation and submission creation."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -108,6 +109,9 @@ def _make_official_baseline_submission(target: Path, contract: BenchmarkContract
         "--data_dir",
         str(contract.data_dir),
     ]
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    environment = dict(os.environ)
+    # submit.py prints Chinese status text; force a portable encoding on Windows.
+    environment["PYTHONIOENCODING"] = "utf-8"
+    completed = subprocess.run(command, check=False, capture_output=True, text=True, env=environment)
     if completed.returncode != 0:
         raise RuntimeError(f"official baseline submission failed: {completed.stderr.strip() or completed.stdout.strip()}")
