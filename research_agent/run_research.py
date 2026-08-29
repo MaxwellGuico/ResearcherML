@@ -12,7 +12,7 @@ from .finalize import finalize_run
 from .logger import ResearchLogger
 from .loop import AutonomousResearchLoop
 from .models.torch_fm import run_torch_fm_candidate
-from .planner import EvidencePlanner
+from .llm_planner import LLMPlanningError, OpenAIPlanner
 from .regions import SearchRegionManager
 from .review import EvidenceReviewer
 from .runner import ExperimentRunner
@@ -24,7 +24,7 @@ from .contracts import BENCHMARK_CONTRACT
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the validation-only KuaiRand autonomous research loop.")
-    parser.add_argument("--cycles", type=int, default=4, help="maximum research cycles to attempt")
+    parser.add_argument("--cycles", type=int, default=20, help="maximum research cycles to attempt (capped at the safety budget)")
     parser.add_argument("--artifact-dir", default="runs", help="append-only artifact directory")
     parser.add_argument("--data-dir", default=str(BENCHMARK_CONTRACT.data_dir))
     args = parser.parse_args()
@@ -39,13 +39,18 @@ def main() -> None:
         logger=logger,
         runner=ExperimentRunner(logger, contract=contract),
         validator=validator,
-        contract=contract,
+        contract=contract, max_iterations=min(args.cycles, contract.max_experiments),
     )
     logger.log_action("research_run_started", details={"max_cycles": args.cycles, "data_interface": "data.py", "selection_split": contract.validation_split})
+    try:
+        planner = OpenAIPlanner.from_environment()
+    except LLMPlanningError as exc:
+        logger.log_action("llm_configuration_failed", details={"error": str(exc), "recovery": "add OPENAI_API_KEY to .env and rerun"})
+        raise SystemExit(str(exc))
     loop = AutonomousResearchLoop(
         controller=controller,
         logger=logger,
-        planner=EvidencePlanner(seed=0),
+        planner=planner,
         search=SearchController(seed=0),
         critic=ProposalCritic(validator),
         reviewer=EvidenceReviewer(),
@@ -53,7 +58,11 @@ def main() -> None:
         regions=SearchRegionManager(),
         candidate=run_torch_fm_candidate,
     )
-    results = loop.run(args.cycles)
+    try:
+        results = loop.run(min(args.cycles, contract.max_experiments))
+    except LLMPlanningError as exc:
+        logger.log_action("llm_planning_failed", details={"error": str(exc), "recovery": "run paused; correct the LLM configuration and resume"})
+        raise SystemExit(str(exc))
     logger.log_action("research_run_finished", details={"cycles_completed": len(results), "stop_reason": controller.state.stop_reason})
     try:
         final = finalize_run(store, contract=contract)

@@ -21,11 +21,10 @@ class EvidenceReviewer:
             return ReviewDecision("finished", state.stop_reason or "controller stopped")
         if not history:
             return ReviewDecision("explore", "No completed experiments exist yet.")
-        recent = history[-3:]
-        if all(item.get("decision") in {"rejected", "inconclusive", "failed"} for item in recent):
+        if state.consecutive_non_improvements >= 3:
             return ReviewDecision(
                 "restart",
-                "Recent evidence did not produce a meaningful improvement; explore a different direction.",
+                "The plateau threshold was reached; request a new direction from the LLM instead of stopping.",
             )
         if history[-1].get("decision") == "accepted":
             return ReviewDecision("refine", "The latest result was accepted; inspect nearby evidence before changing direction.")

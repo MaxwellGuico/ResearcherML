@@ -2,6 +2,7 @@ import tempfile
 import unittest
 
 from research_agent.controller import ExperimentController
+from research_agent.contracts import BenchmarkContract
 from research_agent.logger import ResearchLogger
 from research_agent.runner import CandidateOutput, ExperimentRunner
 from research_agent.safety import ExperimentProposal, SafetyValidator
@@ -19,6 +20,10 @@ def strong_candidate(_data, _config, _run_dir):
 
 def broken_candidate(_data, _config, _run_dir):
     raise RuntimeError("intentional runner failure")
+
+
+def weak_candidate(_data, _config, _run_dir):
+    return CandidateOutput(["u", "u"], [1, 0], [0.1, 0.9])
 
 
 def proposal(experiment_id, **changes):
@@ -64,11 +69,13 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(record["parent_experiment_id"], "baseline")
 
     def test_controller_recovers_state_and_history_after_restart(self):
+        test_contract = BenchmarkContract(target_primary=1.1)
         first_controller = ExperimentController(
             logger=self.logger,
             runner=self.runner,
             validator=self.validator,
             state=ResearchState(current_best_primary=0.5),
+            contract=test_contract,
         )
         first_controller.run_iteration(proposal("exp_001"), strong_candidate)
 
@@ -76,6 +83,7 @@ class ControllerTests(unittest.TestCase):
             logger=self.logger,
             runner=self.runner,
             validator=self.validator,
+            contract=test_contract,
         )
         duplicate = resumed.run_iteration(
             proposal("exp_002", config={"candidate": "exp_001"}),
@@ -115,21 +123,34 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse((self.store.runs_dir / "exp_003").exists())
         self.assertIn("exactly one", result.error)
 
-    def test_failure_recovers_and_stops_after_three_non_improvements(self):
+    def test_failure_recovers_and_requests_restart_after_three_non_improvements(self):
         controller = ExperimentController(
             logger=self.logger,
             runner=self.runner,
             validator=self.validator,
-            state=ResearchState(current_best_primary=1.0),
+            state=ResearchState(current_best_primary=0.64),
         )
 
         first = controller.run_iteration(proposal("exp_004"), broken_candidate)
-        controller.run_iteration(proposal("exp_005"), strong_candidate)
-        third = controller.run_iteration(proposal("exp_006"), strong_candidate)
+        controller.run_iteration(proposal("exp_005"), weak_candidate)
+        third = controller.run_iteration(proposal("exp_006"), weak_candidate)
 
         self.assertEqual(first.decision, "failed")
         self.assertEqual(third.decision, "rejected")
-        self.assertTrue(controller.state.stopped)
-        self.assertIn("3 consecutive", controller.state.stop_reason)
-        skipped = controller.run_iteration(proposal("exp_007"), strong_candidate)
-        self.assertEqual(skipped.decision, "skipped")
+        self.assertFalse(controller.state.stopped)
+        self.assertEqual(controller.state.consecutive_non_improvements, 3)
+
+    def test_plateau_restart_resets_counter_without_stopping(self):
+        controller = ExperimentController(
+            logger=self.logger,
+            runner=self.runner,
+            validator=self.validator,
+            state=ResearchState(current_best_primary=0.64),
+        )
+        for number in range(3):
+            controller.run_iteration(proposal(f"exp_{number + 10:03d}"), broken_candidate)
+        self.assertFalse(controller.state.stopped)
+        self.assertEqual(controller.state.consecutive_non_improvements, 3)
+        controller.begin_plateau_restart()
+        self.assertEqual(controller.state.consecutive_non_improvements, 0)
+        self.assertEqual(controller.state.plateau_restarts, 1)

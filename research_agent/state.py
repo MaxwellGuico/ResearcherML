@@ -10,6 +10,7 @@ class ResearchState:
     current_best_primary: float = 0.6015
     completed_iterations: int = 0
     consecutive_non_improvements: int = 0
+    plateau_restarts: int = 0
     stop_reason: str | None = None
 
     @property

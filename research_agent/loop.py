@@ -8,7 +8,7 @@ from .controller import ExperimentController, IterationResult
 from .critic import ProposalCritic
 from .fidelity import FidelityManager
 from .logger import ResearchLogger
-from .planner import EvidencePlanner, ResearchDirection
+from .planner import ResearchDirection, ResearchPlanner
 from .review import EvidenceReviewer
 from .regions import SearchRegionManager
 from .runner import CandidateCallable
@@ -30,7 +30,7 @@ class AutonomousResearchLoop:
         *,
         controller: ExperimentController,
         logger: ResearchLogger,
-        planner: EvidencePlanner,
+        planner: ResearchPlanner,
         search: SearchController,
         critic: ProposalCritic,
         reviewer: EvidenceReviewer,
@@ -63,7 +63,12 @@ class AutonomousResearchLoop:
                     "regions": [snapshot.__dict__ for snapshot in self.regions.snapshots(history)],
                 },
             )
+            if review.action == "restart":
+                self.controller.begin_plateau_restart()
             direction = self.planner.propose(history, self.controller.state)
+            llm_metadata = getattr(self.planner, "last_metadata", None)
+            if llm_metadata:
+                self.logger.log_action("llm_hypothesis_generated", details=dict(llm_metadata))
             self.logger.log_action("research_direction_proposed", details=direction.as_dict())
             search_state = self.regions.choose_search_state(direction, history, self.controller.state, review)
             proposal = self.search.propose_trial(direction, self.controller.state, history, search_state=search_state)

@@ -189,6 +189,22 @@ class ExperimentController:
             experiment_id=experiment_id,
         )
 
+    def begin_plateau_restart(self) -> None:
+        """Record a plateau and allow the LLM to investigate a new direction."""
+        if self.state.consecutive_non_improvements < self.contract.non_improvement_limit:
+            return
+        self.state.plateau_restarts += 1
+        self.state.consecutive_non_improvements = 0
+        self.logger.log_action(
+            "plateau_restart_requested",
+            details={
+                "restart_number": self.state.plateau_restarts,
+                "trigger": f"{self.contract.non_improvement_limit} consecutive non-improvements",
+                "next_step": "LLM must propose a new research direction",
+            },
+        )
+        self._persist_state()
+
     def _finish_without_run(
         self,
         proposal: ExperimentProposal,
@@ -272,13 +288,15 @@ class ExperimentController:
         )
 
     def _apply_stop_rule(self) -> None:
-        if self.state.consecutive_non_improvements >= self.contract.non_improvement_limit:
+        if self.state.current_best_primary >= self.contract.target_primary:
             self.state.stop_reason = (
-                f"{self.contract.non_improvement_limit} consecutive iterations without "
-                f"a primary-score improvement greater than {self.contract.improvement_threshold}"
+                f"target validation primary reached: {self.state.current_best_primary:.4f} "
+                f">= {self.contract.target_primary:.4f}"
             )
-        elif self.max_iterations is not None and self.state.completed_iterations >= self.max_iterations:
-            self.state.stop_reason = f"configured iteration budget reached: {self.max_iterations}"
+        else:
+            budget = self.max_iterations or self.contract.max_experiments
+            if self.state.completed_iterations >= budget:
+                self.state.stop_reason = f"configured experiment budget reached: {budget}"
 
     def _persist_state(self) -> None:
         self.logger.store.write_root_json("state.json", self.state.as_dict())

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from .state import ResearchState
 
@@ -33,6 +33,12 @@ class ResearchDirection:
             "evaluation_budget": dict(self.evaluation_budget),
             "strategy": self.strategy,
         }
+
+
+class ResearchPlanner(Protocol):
+    """Boundary implemented by the OpenAI planner and test doubles."""
+
+    def propose(self, history: Sequence[Mapping[str, Any]], state: ResearchState) -> ResearchDirection: ...
 
 
 class EvidencePlanner:

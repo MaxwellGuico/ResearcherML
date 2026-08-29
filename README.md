@@ -20,6 +20,16 @@ tar xzf KuaiRand-Pure.tar.gz
 python3 baseline.py --model fm
 ```
 
+### LLM research agent
+
+The research agent uses an OpenAI model to generate the high-level hypothesis and rationale. Copy `.env.example` to `.env` if needed, add `OPENAI_API_KEY`, then run:
+
+```powershell
+.\.venv\Scripts\python.exe -m research_agent.run_research --artifact-dir runs_llm
+```
+
+It selects experiments using validation only. It stops successfully at validation primary `0.65`, requests an LLM-guided new research direction after three non-improving iterations, and has a hard cap of 20 experiments.
+
 `--data_dir` 默认 `./KuaiRand-Pure/data`；数据放在别处时显式指定。
 
 `--model` 可选 `fm`（官方 baseline）/ `pop`（trivial baseline）/ `random`（下界，用于自检评测代码）。

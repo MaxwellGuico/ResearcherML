@@ -21,6 +21,8 @@ class BenchmarkContract:
     primary_metric: str = "primary"
     improvement_threshold: float = 0.002
     non_improvement_limit: int = 3
+    target_primary: float = 0.65
+    max_experiments: int = 20
 
     @property
     def selection_split(self) -> str:
