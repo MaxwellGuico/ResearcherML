@@ -28,6 +28,9 @@ class ExperimentProposal:
     model_family: str = "fm"
     human_reviewed: bool = False
     runtime_budget_seconds: float = 600.0
+    research_direction_id: str | None = None
+    search_strategy: str = ""
+    search_region_id: str = ""
 
     def config_fingerprint(self) -> str:
         """Stable representation used to reject exact duplicate candidates."""
