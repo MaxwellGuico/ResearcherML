@@ -1,16 +1,29 @@
 # TikTok TechJam 2026 — Project Guidance
 
+## Architecture guidance
+
+- Before designing, implementing, or modifying the autonomous research agent, read `docs/agent-architecture.md`.
+- Treat that document as phased architecture guidance. This root `AGENTS.md`, the Starter Kit README, and `evaluate.py` remain authoritative if guidance conflicts.
+- The mandatory action, per-iteration, error/recovery, code-diff, metrics, and manual-intervention logging requirements in the architecture document apply to every research run.
+
 ## Project goal
 
 Build an Autonomous Machine Learning Research Agent for the KuaiRand-Pure recommender-system challenge. The agent must reproduce the official Factorization Machine (FM), propose and run controlled experiments, evaluate candidates, recover from failures, keep evidence, and produce a valid final prediction file.
 
-Final goal: for each user, rank the videos they were exposed to so videos that actually receive a `long_view` are placed nearer the top. The task is about the order of each user's logged exposures, not increasing the number of videos available.
+Final goal: 
+1. How well the recommendation model ranks videos
+2. How well the autonomous agent conducts the research process
 
 ## Team and deadline
 
 - Submission deadline: 1 September 2026 at 12:00 PM. Assume Asia/Singapore until the organizer confirms the official timezone.
 - The team has limited ML experience. Explain unfamiliar ML concepts plainly and prefer small, testable changes.
 - Prioritize a complete, reproducible agent loop and submission over bonus datasets, elaborate UI, or advanced models.
+
+## Reference sources
+
+- KuaiRand official dataset and research site: https://kuairand.com/
+- Local starter-kit README and `evaluate.py`: benchmark task, permitted data, metrics, and submission contract.
 
 ## Fixed benchmark contract
 
