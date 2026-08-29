@@ -80,6 +80,15 @@ class ArtifactStore:
         destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return destination
 
+    def write_root_json(self, filename: str, payload: dict[str, Any]) -> Path:
+        """Write a small current-state document at the artifact root."""
+        if Path(filename).name != filename:
+            raise ValueError("filename must not contain a directory")
+        self.initialize()
+        destination = self.root / filename
+        destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return destination
+
     def read_events(self) -> list[dict[str, Any]]:
         return self._read_jsonl(self.events_path)
 
@@ -88,6 +97,14 @@ class ArtifactStore:
 
     def read_interventions(self) -> list[dict[str, Any]]:
         return self._read_jsonl(self.interventions_path)
+
+    def read_root_json(self, filename: str) -> dict[str, Any] | None:
+        if Path(filename).name != filename:
+            raise ValueError("filename must not contain a directory")
+        source = self.root / filename
+        if not source.exists():
+            return None
+        return json.loads(source.read_text(encoding="utf-8"))
 
     def _append_jsonl(self, destination: Path, payload: dict[str, Any]) -> None:
         self.initialize()
