@@ -10,6 +10,7 @@ from .fidelity import FidelityManager
 from .logger import ResearchLogger
 from .planner import EvidencePlanner, ResearchDirection
 from .review import EvidenceReviewer
+from .regions import SearchRegionManager
 from .runner import CandidateCallable
 from .search import SearchController, SearchState
 
@@ -34,6 +35,7 @@ class AutonomousResearchLoop:
         critic: ProposalCritic,
         reviewer: EvidenceReviewer,
         fidelity: FidelityManager,
+        regions: SearchRegionManager | None = None,
         candidate: CandidateCallable,
     ) -> None:
         self.controller = controller
@@ -43,6 +45,7 @@ class AutonomousResearchLoop:
         self.critic = critic
         self.reviewer = reviewer
         self.fidelity = fidelity
+        self.regions = regions or SearchRegionManager()
         self.candidate = candidate
 
     def run(self, max_cycles: int) -> list[CycleResult]:
@@ -52,13 +55,17 @@ class AutonomousResearchLoop:
                 break
             history = self.logger.store.read_iterations()
             review = self.reviewer.review(history, self.controller.state)
-            self.logger.log_action("evidence_reviewed", details={"action": review.action, "rationale": review.rationale})
+            self.logger.log_action(
+                "evidence_reviewed",
+                details={
+                    "action": review.action,
+                    "rationale": review.rationale,
+                    "regions": [snapshot.__dict__ for snapshot in self.regions.snapshots(history)],
+                },
+            )
             direction = self.planner.propose(history, self.controller.state)
             self.logger.log_action("research_direction_proposed", details=direction.as_dict())
-            search_state = SearchState(
-                status="RESTARTING" if review.action == "restart" else "EXPLORING",
-                strategy="diverse_restart" if review.action == "restart" else direction.strategy,
-            )
+            search_state = self.regions.choose_search_state(direction, history, self.controller.state, review)
             proposal = self.search.propose_trial(direction, self.controller.state, history, search_state=search_state)
             critic_result = self.critic.review(proposal, history)
             self.logger.log_action(
