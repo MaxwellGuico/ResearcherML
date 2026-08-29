@@ -27,6 +27,7 @@ class MarkdownReporter:
         for record in iterations:
             lines.extend(self._render_iteration(record))
         lines.extend(self._render_interventions())
+        lines.extend(self._render_final_summary())
         return "\n".join(lines).rstrip() + "\n"
 
     def _render_iteration(self, record: dict[str, Any]) -> list[str]:
@@ -63,4 +64,14 @@ class MarkdownReporter:
                     "",
                 ]
             )
+        return lines
+
+    def _render_final_summary(self) -> list[str]:
+        summary = self.store.read_root_json("final_summary.json")
+        if not summary:
+            return []
+        lines = ["## Final Summary", ""]
+        for key in ("selected_experiment_id", "selection_primary", "test_GAUC", "test_nDCG@5", "test_primary", "submission_path", "submission_checked"):
+            lines.append(f"- {key}: {summary.get(key, 'unavailable')}")
+        lines.append("")
         return lines

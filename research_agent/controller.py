@@ -252,6 +252,7 @@ class ExperimentController:
             "metrics": dict(metrics),
             "delta_primary": delta_primary,
             "runtime_seconds": runtime_seconds,
+            "runner_metadata": dict(runner_result.output.metadata) if runner_result and runner_result.output else {},
             "decision": decision,
             "error": error,
             "recovery": recovery,
