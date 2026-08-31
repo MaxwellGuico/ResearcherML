@@ -23,7 +23,7 @@ class BenchmarkContractTests(unittest.TestCase):
     def test_stopping_parameters_match_project_contract(self):
         self.assertEqual(BENCHMARK_CONTRACT.improvement_threshold, 0.002)
         self.assertEqual(BENCHMARK_CONTRACT.non_improvement_limit, 3)
-        self.assertEqual(BENCHMARK_CONTRACT.target_primary, 0.65)
+        self.assertEqual(BENCHMARK_CONTRACT.target_primary, 0.70)
         self.assertEqual(BENCHMARK_CONTRACT.max_experiments, 20)
 
 

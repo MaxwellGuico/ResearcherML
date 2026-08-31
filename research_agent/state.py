@@ -12,6 +12,7 @@ class ResearchState:
     consecutive_non_improvements: int = 0
     plateau_restarts: int = 0
     stop_reason: str | None = None
+    active_experiment_id: str | None = None
 
     @property
     def stopped(self) -> bool:

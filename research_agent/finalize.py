@@ -10,12 +10,13 @@ from typing import Any
 
 import torch
 
-from data import encode, load
+from data import encode_candidate, load
 from submit import read_submission, write_submission
 
 from .contracts import BENCHMARK_CONTRACT, BenchmarkContract
 from .metrics import evaluate_predictions
-from .models.torch_fm import TorchFM, _predict
+from .models.torch_fm import _predict, build_candidate_model
+from .readiness import audit_readiness
 from .reporter import MarkdownReporter
 from .state import ResearchState
 from .store import ArtifactStore
@@ -63,6 +64,10 @@ def finalize_run(
         "test_primary": test_metrics.get("primary") if test_metrics else "unavailable (official baseline submission; no agent-selected candidate)",
     }
     store.write_root_json("final_summary.json", summary)
+    readiness = audit_readiness(store, target)
+    summary["readiness_passed"] = readiness.passed
+    summary["readiness_issues"] = list(readiness.issues)
+    store.write_root_json("final_summary.json", summary)
     report_path = MarkdownReporter(store).write()
     return FinalizationResult(
         selected_experiment_id=state.current_best_experiment_id,
@@ -89,10 +94,20 @@ def _write_selected_torch_submission(target: Path, record: dict[str, Any], contr
         raise FileNotFoundError(f"selected PyTorch checkpoint is unavailable: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     splits = load(str(contract.data_dir))
-    encoded, feature_dim = encode(splits)
-    model = TorchFM(feature_dim, int(checkpoint["config"].get("embedding_dim", 16)))
-    model.load_state_dict(checkpoint["model_state"])
+    encoded, feature_dim = encode_candidate(
+        splits,
+        feature_variant=str(checkpoint["config"].get("feature_variant", "baseline")),
+    )
     test_x, test_y, test_users = encoded[contract.test_split]
+    if int(checkpoint.get("feature_dim", feature_dim)) != feature_dim:
+        raise ValueError("selected checkpoint feature dimension does not match canonical encoded data")
+    model = build_candidate_model(
+        checkpoint["config"],
+        feature_dim=feature_dim,
+        field_count=int(test_x.shape[1]),
+        embedding_dim=int(checkpoint["config"].get("embedding_dim", 16)),
+    )
+    model.load_state_dict(checkpoint["model_state"])
     scores = _predict(model, torch.as_tensor(test_x, dtype=torch.long))
     write_submission(target, splits[contract.test_split], scores)
     return evaluate_predictions(test_users, test_y, scores, split=contract.test_split, allow_test=True).as_dict()

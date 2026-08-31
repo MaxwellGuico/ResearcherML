@@ -9,7 +9,7 @@ This is the project's architecture reference for the autonomous research system.
 - If this document conflicts with those sources, the root rules and fixed benchmark contract win.
 - Before designing, implementing, or modifying the research agent, consult this document.
 - Implement the architecture in phases. The initial version should establish the smallest reliable closed loop before advanced orchestration or search is added.
-- Advanced search, multiple specialist agents, multiple islands, and new model families are future extensions requiring evidence and human review.
+- Advanced BO/TPE islands and additional model families remain future extensions requiring evidence and human review. A bounded two-worker hypothesis portfolio, one generic implementer, an independent verifier, and a reviewed compositional FM-hybrid architecture language are now implemented.
 - Concrete experiment templates are implementation configuration, not part of this architecture document. Define, approve, and version them separately.
 
 ## Project implementation constraints
@@ -29,6 +29,191 @@ This is the project's architecture reference for the autonomous research system.
 - Preserve the existing NumPy FM in `baseline.py` as the immutable official reference; do not convert or overwrite that reference implementation.
 - Before comparing new architectures, verify that the PyTorch baseline path consumes the same `data.py` outputs and uses the unchanged official evaluator.
 - PyTorch is approved for this project. Any additional modelling or search dependency still requires human review under the root project rules.
+
+## Current implementation snapshot — 30 August 2026
+
+The repository currently implements Phases 1–8 of the improvement plan. The
+sections later in this document continue to describe longer-term design where
+they are explicitly marked as recommendations or future work.
+
+```text
+Experiment history + diagnostics + incumbent
+                         │
+                         ▼
+                    LLM planner
+       strategy + 3–4 falsifiable hypotheses
+                         │
+              one assigned hypothesis per slot
+                         ▼
+             Generic LLM implementer
+      adopt the expertise required by the hypothesis
+       exact registry mapping or capability request
+                         │
+                         ▼
+              Independent verifier
+ hypothesis → behavior → config/diff → evidence
+                         │
+                         ▼
+              Search controller + runner
+       up to two workers; low → medium → full
+                         │
+                         ▼
+        append-only evidence + planner memory
+```
+
+Current properties:
+
+- The default planner is online, uses `gpt-5.6-luna` unless overridden, and
+  reads its OpenAI API key from `.env`.
+- Each ideation response first authors a structured research strategy. The LLM
+  decides whether to start, continue, or revise a phase; selects focus domains
+  and metric emphasis; declares frozen factors; allocates worker domains and
+  exploit/explore roles; cites its evidence; and states transition criteria.
+  The deterministic orchestrator validates contradictions and enforces the
+  decision but contains no architecture-first, feature-first, or
+  hyperparameter-first priority list. Both workers may therefore investigate
+  distinct architectures when that is the LLM's evidence-backed strategy.
+  Decisions are append-only in `research_strategies.jsonl`, included in the
+  next planner context, and rendered in `research_log.md`.
+- A two-worker planning batch uses one shared planner call followed by two
+  identical generic-implementer calls. There is no domain-specialist router and
+  no capability partition. Every implementer sees the same executable registry
+  and adopts the expertise required by its assigned hypothesis.
+- An implementer may execute only its assigned hypothesis. Unsupported ideas
+  become a diagnostic, capability-build, or human-approval action; they are
+  retained in the research tree and are never replaced by `specialist_new` or
+  silently mapped onto different behavior.
+- The semantic critic verifies the hypothesis, claimed mechanism, named
+  implementation, configuration diff, fidelity consistency, patch artifact,
+  diagnostics, and measured evidence. Online runs add one independent LLM
+  audit after deterministic checks pass.
+- The semantic audit payload includes the measured feature-lineage and
+  stratified-validation evidence when a hypothesis makes subgroup claims.
+  Planner history receives only slice metrics and the weakest eligible stratum;
+  training-vocabulary hashes remain in artifacts and are not repeated to the
+  LLM.
+- Critic output is persisted in `critic_feedback.jsonl` and condensed into
+  `critic_memory.json` for the next planning cycle. Feedback distinguishes a
+  supported lineage, a valid negative result, execution failure, duplicate
+  configuration, lineage defect, and implementation/evidence misalignment.
+  The planner must apply these lessons rather than merely observe that a run
+  was rejected.
+- Before compute, the critic verifies that the declared conceptual factor is
+  the only scientific configuration diff and that online lineage references
+  identify a known experiment or hypothesis node. After compute, it verifies
+  that `primary == (GAUC + nDCG@5) / 2` in addition to experiment ownership,
+  fidelity consistency, finite metrics, and patch evidence.
+- `evidence_memory.json` gives future planning calls compact training curves,
+  score distributions, feature coverage, segment metrics, seed statistics,
+  failure classes, resource use, and semantic verdicts.
+- `research_tree.jsonl` records append-only hypothesis consideration,
+  experiment binding, capability branches, and outcomes. The derived
+  `research_tree.json` snapshot links every experiment to its accepted parent,
+  preserves deferred and failed branches, reconstructs incumbent ancestry, and
+  supplies bounded continuation candidates to the next planning batch.
+- `research_tree.md` is regenerated from that snapshot as a colour-coded
+  Mermaid flowchart for GitHub and editor Markdown previews. It is a read-only
+  projection and never becomes a source of controller state.
+- `research_coverage.json` complements the tree with tested, accepted,
+  present-in-an-accepted-combination, untested, pending, and unavailable architecture mechanisms, objectives, and
+  feature families. It imports only metric-consistent, semantically approved
+  non-smoke sibling-run evidence, deduplicates scientific configurations, and
+  prefers multi-seed means when available. The tree answers lineage; coverage
+  answers what has not yet been tried.
+- Multi-task supervision is now an executable training-objective capability,
+  not a separate inference architecture. The primary `long_view` head retains
+  the accepted FM-hybrid graph; a bounded `is_click` auxiliary head shares its
+  embeddings during training with reviewed weights 0.05, 0.1, and 0.2. The
+  auxiliary outcome is carried by the canonical `data.py` rows, never becomes
+  an input feature, and does not participate in candidate acceptance.
+- `--architecture-coverage` turns that inventory into a bounded campaign. The
+  LLM authors each hypothesis and ordering, while a deterministic invariant
+  permits only mechanisms currently marked executable and untested. The
+  campaign ends when no such mechanism remains, preventing local refinement
+  from consuming an exhaustive-baseline budget.
+- Online planner candidates explicitly declare whether they continue, refine,
+  revisit, or start a new branch and identify the evidence node they depend on.
+  Accepted lineages are offered first to the exploit worker; near-incumbent
+  rejected branches and unresolved hypotheses remain available for deliberate
+  revisiting rather than disappearing from a rolling text window.
+- Experiment identity belongs to the hypothesis. `low`, `medium`, `full`, and
+  seed confirmations are stages of that same experiment, not independent
+  experiments. Promotion safety uses the preceding stage as its configuration
+  parent, while semantic lineage continues to reference the original accepted
+  experiment or hypothesis; these two parent concepts must not be conflated.
+- Every new controlled experiment clones the complete accepted-incumbent
+  configuration and applies exactly one conceptual change. Search directions
+  never silently reset architecture, features, objective, or optimisation
+  settings to baseline. Hyperparameter values tested under a different model,
+  feature, or objective context do not exhaust the incumbent's search context.
+- The search loop runs at most two experiments concurrently. Each worker has
+  an explicit one- or two-thread CPU limit, an isolated run directory, and its
+  own low → medium → full lifecycle. Completed workers are reconciled serially
+  against the latest incumbent, highest three-seed full-fidelity mean first.
+- Bounded autonomy separates a round budget from the persistent lifetime cap.
+  `--round-budget` (or `--cycles`) limits one approved round, `--max-rounds`
+  pre-approves repeated rounds in one invocation, and
+  `--max-total-experiments` bounds the artifact directory across resumptions.
+  The validation target is explicit through `--target-primary` and defaults to
+  0.70. Every round emits `research_checkpoint.json` with progress, target gap,
+  stop status, and `test_data_used: false`. A normal checkpoint returns control
+  for approval without finalization; test confirmation occurs only with
+  `--finalize` or after reaching the declared target.
+- Planning overbooks execution slots when an implementer returns a diagnostic or
+  capability action. The action remains in the append-only backlog while a
+  bounded refill request selects another distinct executable hypothesis. Safe
+  capability work does not block unrelated experiments; an invocation pauses
+  only when no executable work remains or explicit human authority is required.
+- Two-worker batches use the explicit portfolio roles and domains selected by
+  the LLM strategy. Workers may occupy the same domain with distinct hypotheses
+  or different domains. Both still clone the incumbent so results remain
+  compositional. The role is
+  included in implementer prompts and persisted in worker, stage, and iteration
+  evidence. Capability exhaustion is evaluated in the incumbent's model,
+  feature, and objective context rather than globally across incompatible
+  configurations.
+- Duplicate semantics use one evidence rule across planning, criticism, and
+  execution: only a configuration with a finite validation `primary` consumes
+  that configuration. Failed, interrupted, pre-run safety/semantic rejected,
+  and otherwise unmeasured attempts may be retried. A thread-safe in-flight
+  reservation still blocks simultaneous duplicate workers; it is released on
+  unmeasured failure and committed to durable duplicate history only after
+  metrics validation succeeds. Reservation, release, and commit events are
+  append-only evidence.
+- Planner output is a decision, not necessarily a training run. The implemented
+  action vocabulary is `RUN_EXPERIMENT`, `RUN_DIAGNOSTIC`, `BUILD_CAPABILITY`,
+  and `REQUEST_HUMAN_APPROVAL`. The generic implementer must use the latter three when an
+  assigned hypothesis is diagnostic, lacks an exact safe implementation, or
+  exceeds current authority; they may not translate it into an unrelated
+  catalogue experiment. Diagnostics use validation evidence only. Capability
+  and approval requests enter `capability_backlog.jsonl` and are fed back to
+  subsequent planning calls. `BUILD_CAPABILITY` is non-blocking when independent
+  executable work exists. `REQUEST_HUMAN_APPROVAL` pauses after already-started
+  safe workers complete; an action-only batch pauses non-terminally rather than
+  repeatedly requesting the same action.
+- Every fidelity stage records training-derived user-activity and categorical
+  feature-coverage strata with GAUC, nDCG@5, primary, row/user counts, positive
+  rate, fixed boundaries, and training-vocabulary hashes. The weakest stratum is
+  identified only when it has at least 100 rows. This modest diagnostic cost is
+  paid at low fidelity as well so pruning cannot create an evidence deadlock.
+- When the incumbent is a reviewed two-path composition, the architecture
+  capability is narrowed to its two controlled one-path children. Parallel
+  siblings share the same frozen parent, reserve different architecture values,
+  and record which path was removed. Evidence explicitly limits attribution to
+  the removed path rather than claiming a broader causal mechanism.
+- Human approvals use stable versioned IDs and authority scopes. Repeated or
+  concurrent reuse writes an event referencing the original approval instead of
+  another intervention record. Reports collapse identical legacy records while
+  preserving their raw append-only count.
+- Before every planning batch, the orchestrator receives the immutable benchmark
+  contract, a digest and operating boundary from this architecture document,
+  recent manual interventions, compact errors/recoveries, state, metrics, and
+  diagnostic evidence. Exact numeric trial selection remains outside the LLM.
+- Finalization reconstructs the selected checkpoint's recorded FM, DeepFM, or
+  residual-NFM architecture, validates the submission schema, and writes
+  `readiness.json`. Readiness fails visibly when lifecycle logs, patches,
+  diagnostics, semantic reviews, state, selection lineage, or submission
+  evidence are missing.
 
 ## Autonomous MLE Experimentation System
 
@@ -76,7 +261,10 @@ The true function `f(x)` is expensive and unknown before experimentation. The sy
 
 ---
 
-## 2. High-Level Architecture
+## 2. Target High-Level Architecture
+
+This diagram is the longer-term system shape. Refer to the implementation
+snapshot above for components that are operational today.
 
 ```text
                          ┌───────────────────────────┐
@@ -229,9 +417,22 @@ It should:
 
 It should **not** manually micromanage every individual trial.
 
-### 4.2 Specialist Agents
+### 4.2 Generic Implementer
 
-The system may use several specialist agents rather than one general agent.
+The active system uses one generic LLM implementer contract rather than a
+network of routed specialists. For each assigned hypothesis it adopts the
+needed domain expertise, compares the claim with the complete executable
+registry, and returns either an exact experiment plan or one explicit
+non-training action. It cannot replace the assigned hypothesis with an easier
+catalogue experiment. The verifier remains independent of the implementer.
+
+Arbitrary generated source patches are not automatically executed. Existing
+reviewed declarative structures and registered feature/objective implementations
+are executable; missing behavior becomes `BUILD_CAPABILITY`, and substantially
+different model families or dependencies become `REQUEST_HUMAN_APPROVAL`.
+
+The role descriptions below are expertise the generic implementer may adopt;
+they are not separate running agents.
 
 #### Feature/Data Agent
 
@@ -253,7 +454,54 @@ Example hypothesis:
 
 #### Model Architecture Agent
 
-Investigates:
+The generic implementer owns structural model experiments when assigned an
+architecture hypothesis. It receives the evidence-backed hypothesis and the
+reviewed architecture registry. It may select a categorical model structure,
+while the search controller still owns low-level numeric search.
+
+The compiler accepts the legacy structures:
+
+- `deepfm`: the immutable FM prediction path plus a residual MLP over
+  concatenated field embeddings; fixed hidden layers `[64, 32]` and dropout
+  `0.1`.
+- `nfm_residual`: the immutable FM prediction path plus a residual nonlinear
+  network over the vector-valued FM bi-interaction; fixed hidden layer `[32]`
+  and dropout `0.1`.
+
+It also accepts a canonical declarative specification that preserves the
+immutable FM score and composes one or two reviewed residual paths:
+
+- `embedding_mlp`: an MLP over concatenated field embeddings.
+- `bi_interaction_mlp`: an MLP over the vector-valued FM bi-interaction.
+- `cross_network`: one to three explicit DCN-style cross layers.
+
+The implementer may select widths `16`, `32`, or `64`, depths `1` to `3`,
+dropout `0`, `0.1`, or `0.2`, and additive fusion. Two-path structures may
+instead use a learned gate. The compiler rejects duplicate or unknown paths,
+out-of-range values, non-canonical identifiers, architecture overhead above
+500,000 parameters, and total models above 10,000,000 parameters. It never
+accepts source code, import names, arbitrary classes, or unconstrained numeric
+dimensions.
+
+All variants are compiled by `research_agent.models.torch_fm.build_model` from
+the reviewed aliases or `ReviewedArchitectureSpec`. Each run records
+`architecture_spec.json`, a structural diff from FM, parameter count,
+checkpoint configuration, and diagnostics. They are FM hybrids and do not use
+external data, pretrained weights, or a new dependency.
+
+Architecture experiments are omitted from the executable registry
+unless the run is started with `--approve-architecture-experiments`. That flag
+records the human intervention required by the project rules. The independent
+verifier audits architecture evidence; the generic implementer authors the
+reviewed structural choice for its assigned architecture hypothesis.
+
+The reviewed operator set is the safety and reproducibility boundary, not the
+number of complete model recipes. Future expansion should add operators to the
+declarative compiler rather than allow the LLM to execute arbitrary source
+code. Every new operator still requires tests, resource bounds,
+semantic-contract metadata, and human review before it becomes executable.
+
+For architecture hypotheses, the implementer investigates:
 
 - embedding architecture
 - number of layers
@@ -489,6 +737,40 @@ This is useful for final refinement.
 
 Never assume every configuration deserves a full training run.
 
+### 8.0 Implemented fidelity lifecycle
+
+The current controller uses an ASHA-like three-rung lifecycle:
+
+```text
+experiment/hypothesis ID
+        │
+        ▼
+low (default 4 epochs)
+        │ promising: primary >= incumbent - 0.002
+        ▼
+medium (default 8 epochs)
+        │ promising: primary >= incumbent - 0.002
+        ▼
+full (default 12 epochs)
+        │ promising
+        ▼
+seed_1 + seed_2 confirmation
+```
+
+All rungs retain the same experiment ID, hypothesis, conceptual factor, and
+factor value. Only fidelity metadata, epoch budget, and confirmation seed may
+change. A semantic post-run check verifies this invariance. Weak candidates are
+pruned after low or medium fidelity. This is successive promotion within each
+experiment. Up to two independent experiment lifecycles can now advance
+concurrently; rungs within one experiment remain sequential because later
+fidelity depends on earlier evidence.
+
+Seed 0 is the full rung. Acceptance and concurrent commit ordering require the
+mean of full-fidelity seeds 0, 1, and 2 to exceed the current incumbent. Missing
+confirmation seeds make an experiment ineligible for acceptance. This same
+robust rule is used when resuming older artifacts, so a noisy seed-0 incumbent
+is automatically reconciled to the strongest available three-seed mean.
+
 The system should evaluate candidates at progressively higher fidelity.
 
 Example:
@@ -675,6 +957,19 @@ Do not allow 50 consecutive experiments to be near-identical unless there is str
 
 A robust implementation should be able to run multiple search islands in parallel.
 
+**Implementation status:** a bounded two-worker portfolio is implemented. One
+planner creates a shared slate, two identical implementers receive distinct hypotheses,
+and the workers execute in isolated experiment/stage directories. Artifact
+writes and safety-history updates are synchronized. Worker results are sorted
+by best validation primary and committed serially, so only a candidate that
+beats the incumbent at reconciliation time is accepted. `--workers` selects one
+or two workers and `--worker-threads` limits each worker to one or two CPU
+threads.
+
+This is deliberately smaller than the long-term island architecture below. It
+does not yet provide independent BO/TPE/evolutionary populations or migration;
+those remain future extensions.
+
 ```text
                  SEARCH SPACE
 
@@ -802,6 +1097,20 @@ Every experiment should ideally have:
 
 The benchmark primary objective is fixed as the arithmetic mean of GAUC and nDCG@5. Neither component may replace it for candidate acceptance. The agent should still inspect the two component metrics separately when interpreting results.
 
+The implemented acceptance and convergence rules are intentionally separate:
+
+- If a semantically valid completed candidate has `primary > incumbent_primary`,
+  it becomes the new incumbent. No additional `+0.002` acceptance margin is
+  required.
+- The `0.002` value is a convergence threshold only. A completed hypothesis
+  whose gain is not greater than `0.002` increments the consecutive
+  low-improvement counter even when a smaller positive gain was accepted.
+- Three consecutive completed hypotheses without a gain greater than `0.002`
+  trigger a diverse research restart. Fidelity stages do not increment this
+  counter independently.
+- A post-run semantic-audit failure blocks incumbent promotion regardless of
+  metric value.
+
 ### 14.2 Secondary metrics
 
 Track GAUC and additional diagnostics simultaneously.
@@ -846,6 +1155,67 @@ reproducible improvement
 ## 15. Token-Efficient Agent Operation
 
 LLM tokens are a scarce resource relative to deterministic search operations.
+
+### 15.0 Implemented API-call and token budgets
+
+For the default two-worker batch, the online loop makes:
+
+1. one planner call producing a strategy and 3–4 hypothesis slate;
+2. two concurrent generic-implementer calls, each preserving one assigned
+   hypothesis and returning either an exact mapping or a capability action; and
+3. after execution, one independent semantic-audit call per experiment when
+   deterministic evidence checks pass.
+
+Thus planning costs three API calls per two experiments (1.5 planning calls per
+experiment), instead of independently repeating planning for both workers. A
+`--workers 1` invocation retains the original two-call planning path.
+
+`OPENAI_PLANNER_TOKEN_BUDGET` currently defaults to `0`, disabling the aggregate
+planning stop during system development. It can be set to a positive per-batch
+accounting guard; this is **not** the model's context-window or output-token
+maximum. Observed usage is always recorded so a production cap can be selected
+from evidence rather than guesswork.
+
+The single-hypothesis planner has `max_output_tokens=2400`; the shared
+two-worker strategy/slate call has `max_output_tokens=4000`; each implementer
+has `max_output_tokens=1400`. These ceilings include generated reasoning and visible
+structured output, so they constrain each response independently of the combined
+optional aggregate accounting guard. When configured to a positive value, the
+planner checks usage after the planner call and again after all implementer calls; it
+pauses rather than silently exceeding the batch budget. Because exact input
+usage is known only after a request, this is an accounting boundary, not a
+guaranteed pre-request billing cap. Per-response output ceilings and usage
+logging remain enabled when the aggregate guard is `0`.
+
+`OPENAI_SEMANTIC_CRITIC_TOKEN_BUDGET` separately defaults to `0` during system
+development, disabling its aggregate accounting rejection while preserving
+usage logging. When configured to a positive value, it bounds the audit. The audit
+call has `max_output_tokens=1400`; earlier uncompressed audits used about 1,800–3,100 total
+tokens depending on evidence depth. Keeping the critic separate prevents its
+cost from obscuring planner cost.
+
+Cost controls currently implemented:
+
+- at most six compact evidence records are sent to planning agents;
+- implementers receive only their assigned hypothesis, not the other slate
+  candidates or complete governance context;
+- reviewed architecture values are not duplicated as a full prompt schema
+  because the response schema already enforces them;
+- semantic LLM audits receive one compact best-stage trace while full stage
+  diagnostics remain local;
+- full checkpoints, raw datasets, and full logs are never sent to the LLM;
+- stable prompt-cache keys are used per role and cached-token usage is logged;
+- low text verbosity and strict JSON schemas bound visible output;
+- numeric search, fidelity promotion, metric calculation, and artifact checks
+  remain deterministic and consume no LLM tokens;
+- an unsupported assigned hypothesis becomes an explicit capability or approval
+  action; substitution is forbidden.
+
+A live two-worker Phase 6 batch used 5,142 planning tokens for two distinct
+hypotheses under the retired specialist design. A later evidence-rich Phase 7 batch used
+15,742 tokens, demonstrating that the original 12,000 guard was too low. During
+system development the aggregate planning guard is now disabled (`0`), while
+usage remains metered and semantic audits remain separately budgeted.
 
 ### Good use of tokens
 
@@ -1184,6 +1554,12 @@ Each iteration record must include:
 8. Every error or recovery event and how the agent handled it.
 9. Any restoration of the last accepted candidate.
 10. Manual interventions associated with the iteration.
+11. The semantic review trace: claimed behavior, implementation identifier,
+    configuration diff, evidence-stage identifiers, deterministic checks, LLM
+    audit verdict when online, and any failed correspondence.
+12. For architecture experiments, the selected architecture, declarative
+    structural diff, model family, trainable parameter count, and
+    `architecture_spec.json` path.
 
 Required outputs:
 

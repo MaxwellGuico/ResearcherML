@@ -227,13 +227,19 @@ For each iteration it will:
 
 ### Initial decision rule
 
-- Improvement greater than `0.002`: accept.
-- Improvement between `0` and `0.002`: inconclusive; do not promote.
+- Any positive primary improvement: accept and replace the incumbent.
+- The `0.002` threshold is used only for convergence detection across three completed hypotheses.
 - No improvement: reject.
 - Contract failure, crash, or invalid metrics: fail.
 - A failed or rejected candidate never replaces the accepted candidate.
 
 ## Phase 7: Implement the Research/Orchestrator Agent
+
+**Implementation status (30 August 2026): complete.** The online orchestrator,
+generic implementer, independent verifier, bounded governance context, evidence memory, narrow
+research-direction interface, and deterministic search boundary are implemented
+under `research_agent/`. Final integration also validates checkpoint architecture
+reconstruction and emits a machine-readable readiness audit.
 
 Implement the agent that decides **what is worth investigating**, using the architecture in `docs/agent-architecture.md` as its operating model.
 

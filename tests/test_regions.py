@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from dataclasses import replace
+
 from research_agent.planner import EvidencePlanner
 from research_agent.regions import SearchRegionManager
 from research_agent.review import ReviewDecision
@@ -32,3 +34,18 @@ class SearchRegionManagerTests(unittest.TestCase):
         self.assertIn("restart", search_state.region_id)
         self.assertEqual(search_state.strategy, "diverse_restart")
 
+    def test_portfolio_roles_override_generic_region_policy(self) -> None:
+        manager = SearchRegionManager()
+        base = EvidencePlanner().propose([], ResearchState())
+        exploit = replace(base, portfolio_role="incumbent_exploit")
+        explore = replace(base, portfolio_role="independent_explore")
+
+        exploit_state = manager.choose_search_state(
+            exploit, [], ResearchState(), ReviewDecision("continue", "active")
+        )
+        explore_state = manager.choose_search_state(
+            explore, [], ResearchState(), ReviewDecision("continue", "active")
+        )
+
+        self.assertEqual((exploit_state.status, exploit_state.strategy), ("EXPLOITING", "local_refinement"))
+        self.assertEqual((explore_state.status, explore_state.strategy), ("EXPLORING", "exploration"))

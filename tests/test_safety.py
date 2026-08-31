@@ -1,6 +1,11 @@
 import unittest
 
-from research_agent.safety import ExperimentProposal, SafetyValidator
+from research_agent.safety import (
+    ExperimentProposal,
+    SafetyValidator,
+    has_measured_validation_evidence,
+    measured_historical_configs,
+)
 
 
 def safe_proposal(**changes):
@@ -71,3 +76,15 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse(report.passed)
         self.assertIn("unapproved dependencies", " ".join(report.violations))
         self.assertIn("requires human review", " ".join(report.violations))
+
+    def test_only_finite_primary_metrics_consume_configuration(self):
+        records = [
+            {"config": {"id": "failed"}, "decision": "failed", "metrics": {}},
+            {"config": {"id": "nan"}, "metrics": {"primary": float("nan")}},
+            {"config": {"id": "inf"}, "metrics": {"primary": float("inf")}},
+            {"config": {"id": "measured"}, "metrics": {"primary": 0.6}},
+            {"config": {"id": "measured"}, "metrics": {"primary": 0.6}},
+        ]
+
+        self.assertFalse(has_measured_validation_evidence(records[0]))
+        self.assertEqual(measured_historical_configs(records), [{"id": "measured"}])

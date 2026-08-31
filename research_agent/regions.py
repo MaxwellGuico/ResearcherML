@@ -67,6 +67,19 @@ class SearchRegionManager:
         review: ReviewDecision,
     ) -> SearchState:
         prior = [item for item in history if item.get("direction_id") == direction.direction_id]
+        if direction.portfolio_role == "incumbent_exploit":
+            return SearchState(
+                status="EXPLOITING",
+                region_id=self.region_id(direction.direction_id),
+                strategy="local_refinement",
+            )
+        if direction.portfolio_role == "independent_explore":
+            strategy = "diverse_restart" if review.action == "restart" else "exploration"
+            return SearchState(
+                status="EXPLORING",
+                region_id=self.region_id(direction.direction_id),
+                strategy=strategy,
+            )
         if review.action == "restart":
             restart_index = 1 + sum(
                 str(item.get("search_region_id", "")).startswith(self.region_id(direction.direction_id, restart_index=1).rsplit("_", 1)[0])

@@ -22,13 +22,275 @@ python3 baseline.py --model fm
 
 ### LLM research agent
 
-The research agent uses an OpenAI model to generate the high-level hypothesis and rationale. Copy `.env.example` to `.env` if needed, add `OPENAI_API_KEY`, then run:
+The default research agent is online and deliberately small. On every cycle, an
+LLM planner produces a strategy and 3–4 materially different scientific hypotheses
+without seeing repository direction names or the executable catalogue. It may
+consider model architecture, interaction structure, ranking objectives,
+optimisation, features, temporal effects, or diagnostics. One generic LLM
+implementer then adopts the expertise required by each assigned hypothesis and
+checks it against the full executable registry. It cannot substitute another
+hypothesis. Unsupported ideas become explicit diagnostic, capability-build, or
+human-approval actions. An independent verifier and deterministic runner enforce
+safety, select exact numeric values, train, and score the result.
+
+Copy `.env.example` to `.env`, add `OPENAI_API_KEY`, and optionally change
+`OPENAI_MODEL` (the project default is `gpt-5.6-luna`). `OPENAI_PLANNER_TOKEN_BUDGET` optionally sets the per-cycle
+token ceiling per planning batch (disabled by default with `0` during development), while `OPENAI_SEMANTIC_CRITIC_TOKEN_BUDGET`
+optionally caps the audit call (also disabled by default with `0` during development). Do not paste or commit the key. Each planning
+hypothesis batch makes one shared planner call and up to two concurrent generic-implementer
+calls. If an implementer returns a capability action, a bounded refill request may
+make an additional planning call to keep an execution slot occupied. The agent logs the full
+hypothesis slate, selection/defer decision, response IDs, and aggregate token
+usage. One additional bounded call independently audits the completed
+hypothesis-to-evidence chain. Stable cache keys, low response verbosity, bounded
+outputs, and six compact evidence records limit API cost:
+
+The aggregate planning-token guard is disabled during development. Set
+`OPENAI_PLANNER_TOKEN_BUDGET` to a positive value to restore it. Per-response
+output ceilings and token logging remain active.
 
 ```powershell
 .\.venv\Scripts\python.exe -m research_agent.run_research --artifact-dir runs_llm
 ```
 
-It selects experiments using validation only. It stops successfully at validation primary `0.65`, requests an LLM-guided new research direction after three non-improving iterations, and has a hard cap of 20 experiments.
+The default runs two experiments concurrently with one CPU thread each. Before
+each batch, the online LLM planner authors a structured research strategy: the
+current phase, focus domains, diagnostic metric emphasis, frozen factors,
+worker-domain assignments, evidence rationale, and phase-transition criteria.
+It may assign both workers to distinct architecture hypotheses when the evidence
+supports architecture discovery, or allocate exploit/explore roles across
+different domains. Deterministic code validates and enforces the declared
+strategy but does not choose its scientific priority. Strategy decisions are
+append-only in `research_strategies.jsonl` and appear in `research_log.md`.
+Roles and the shared executable registry are also recorded in planner metadata,
+implementer prompts, worker events, stages, and iteration records. Use
+`--workers 1` for sequential execution, or `--worker-threads 2` to allow two
+threads per worker. Both controls are safety-bounded to a maximum of two:
+
+```bash
+.venv/bin/python -m research_agent.run_research --workers 2 --worker-threads 1 --cycles 2 --artifact-dir runs_parallel
+```
+
+Capability and diagnostic actions do not consume experiment slots. The
+scheduler retains them in the backlog and refills available workers with
+distinct executable hypotheses. Safe capability work therefore does not pause
+unrelated training. Explicit human authority still pauses after current safe
+workers finish, and an action-only batch yields when no executable work remains.
+
+It selects experiments using validation only. It stops successfully at the
+configured validation-primary target (default `0.70`), asks the online team for
+a diverse restart after three improvements below `0.002`, and has a configurable
+persistent lifetime safety cap (default 20 experiments).
+Currently executable research domains are pointwise FM optimisation, pairwise
+ranking and pairwise optimisation, leakage-safe author affinity, leakage-safe
+user-history summaries, weekday features, and human-approved FM architecture
+changes.
+
+Architecture experiments require explicit review at invocation time:
+
+```bash
+.venv/bin/python -m research_agent.run_research --approve-architecture-experiments --artifact-dir runs_architecture
+```
+
+This records a manual intervention and exposes the legacy `deepfm` and
+`nfm_residual` structures plus a bounded compositional language to the
+generic implementer for assigned architecture hypotheses. The language combines one or two reviewed
+embedding-MLP, bi-interaction-MLP, or cross-network residual paths using
+bounded width, depth, dropout, and additive or learned-gate fusion. Arbitrary
+model code and unbounded dimensions are rejected. The implementer authors the
+categorical structure; the search controller retains training hyperparameter
+selection. Each run writes
+`architecture_spec.json`, checkpoint configuration, parameter count, and an
+ordinary configuration patch. These structures remain FM hybrids, use only local training
+data, and add no dependency. Without the approval flag, architecture capability
+is omitted from the planner manifest.
+
+`--cycles` is an alias for `--round-budget`: it controls how many complete
+hypotheses are attempted in one approved research round. `--max-rounds`
+pre-approves multiple rounds for one invocation, while
+`--max-total-experiments` is the persistent lifetime safety cap. Reusing the
+same `--artifact-dir` resumes evidence and state. At an ordinary round boundary,
+the agent writes `research_checkpoint.json` and does not access test data.
+Final test confirmation requires `--finalize`, unless the validation target has
+already been reached.
+
+For example, approve one ten-hypothesis round toward primary 0.70 while retaining
+a 40-experiment lifetime ceiling:
+
+```bash
+.venv/bin/python -m research_agent.run_research \
+  --round-budget 10 --max-rounds 1 --max-total-experiments 40 \
+  --target-primary 0.70 --artifact-dir runs_llm
+```
+
+One experiment ID represents one hypothesis. Its `low`, `medium`, `full`,
+`seed_1`, and `seed_2` executions are recorded in `stages.jsonl` and stored
+under `runs/<experiment_id>/<stage_id>/`; only the completed hypothesis is
+written to `iterations.jsonl`. Acceptance and parallel reconciliation use the
+mean full-fidelity score across seeds 0, 1, and 2; a noisy single seed cannot
+replace the incumbent. Any positive robust validation-primary gain replaces
+the incumbent. The `0.002` threshold is used only for convergence: three
+completed hypotheses without a gain greater than `0.002` trigger a research
+direction restart.
+
+Every new experiment clones the complete accepted-incumbent configuration and
+then applies exactly one conceptual change. For example, after DeepFM is
+accepted, learning-rate, regularization, objective, and feature experiments
+remain DeepFM descendants instead of silently reverting to baseline FM.
+Architecture approval is inherited only while that accepted structure remains
+unchanged; selecting a different structure still requires explicit approval.
+
+Multi-task learning is available as a controlled training-objective factor on
+any accepted pointwise architecture. It keeps `long_view` as the sole ranking
+and acceptance target while a training-only `is_click` head shares the model's
+embeddings. The reviewed objective values use auxiliary-loss weights 0.05,
+0.1, or 0.2. Auxiliary outcomes come through `data.py`, are never inference
+features, and never alter `evaluate.py`.
+When a two-path composed architecture is incumbent, the next architecture
+portfolio is restricted to controlled one-path sibling ablations. Both siblings
+retain the same frozen parent and all non-architecture settings, allowing the
+evidence layer to identify the removed path without overstating causality.
+
+A configuration is durably considered consumed only after it produces a finite
+validation `primary` metric. Failed, interrupted, pre-run safety/semantic
+rejected, and otherwise unmeasured attempts remain retryable. During concurrent
+execution, an in-flight reservation prevents two workers from running the same
+configuration; that reservation is released after an unmeasured failure and is
+committed to duplicate history only after valid metrics are recorded.
+
+The planner can now emit four first-class decisions: `RUN_EXPERIMENT`,
+`RUN_DIAGNOSTIC`, `BUILD_CAPABILITY`, and `REQUEST_HUMAN_APPROVAL`. Exact
+implementations proceed to training. Evidence-only diagnostics write
+`diagnostics.jsonl` without touching test data. Missing safe implementations
+and authority-bound proposals are written append-only to
+`capability_backlog.jsonl`. The invocation continues while independent executable
+work exists and yields without a persistent terminal stop only when no safe work
+remains or human approval is required. The backlog and completed diagnostics are included in
+the next planner context, so unsupported hypotheses are retained rather than
+silently replaced by an unrelated executable experiment.
+
+Approve only a specifically backlogged human-review request, then resume:
+
+```bash
+.venv/bin/python -m research_agent.run_research \
+  --approve-capability-gap listwise_new_dependency \
+  --artifact-dir runs_llm
+```
+
+The gap must currently have `pending_human_approval` status. Approval is scoped
+to that ID, appended to the backlog, and recorded as a manual intervention; it
+does not itself install dependencies or bypass implementation critics.
+
+Each completed hypothesis also refreshes `evidence_memory.json`. This compact
+planner-facing record includes grouped fidelity metrics, seed mean/standard
+deviation, training curves, validation log loss, early-stopping cause, score
+distribution, feature coverage, model size, failure category, runtime, CPU,
+and peak memory. The online planner and generic implementer receive this
+evidence with the next hypothesis request.
+
+At each fidelity, every candidate also records validation metrics stratified by
+training-derived user activity and categorical feature coverage. Every slice
+includes GAUC, nDCG@5, primary, support, and positive rate; fixed boundaries and
+training-vocabulary hashes make the evidence reproducible and leakage-auditable.
+Recording slices at low fidelity prevents pruning from withholding the evidence
+the planner needs to choose its next intervention.
+
+The agent also maintains an append-only `research_tree.jsonl` and a rebuildable
+`research_tree.json` snapshot. The tree gives each normalized hypothesis a
+stable ID, links executed experiments to their accepted parent, retains
+deferred and capability-blocked branches, records failed/rejected outcomes,
+and reconstructs the incumbent ancestry. Before planning, the LLM receives a
+bounded tree view containing the accepted lineage, near-incumbent rejected
+branches, and unresolved hypotheses. Every new planner candidate must label
+itself as `continue`, `refine`, `revisit`, or `branch_new` and cite the prior
+hypothesis or experiment evidence it depends on.
+
+The complementary `research_coverage.json` answers what the tree cannot: which
+model mechanisms, objectives, and feature families are accepted, merely present
+inside an accepted combination, tested, untested, pending implementation, or unavailable. It imports only finite,
+metric-consistent, semantically approved evidence from non-smoke sibling run
+directories, deduplicates scientific configurations, and uses multi-seed means
+when stage evidence is available. This lets the planner see that, for example,
+DeepFM and the reviewed single-path architectures have baseline evidence;
+multi-task objective coverage is tracked separately from model architecture.
+
+Fill only executable architecture coverage gaps without rerunning mechanisms
+that already have validated evidence:
+
+```bash
+.venv/bin/python -m research_agent.run_research \
+  --architecture-coverage --approve-architecture-experiments \
+  --workers 2 --worker-threads 1 --cycles 10 \
+  --artifact-dir runs_architecture_coverage
+```
+
+The LLM still authors the hypothesis and rationale, but the campaign validator
+rejects refinements of already tested mechanisms until every executable
+architecture has baseline evidence. The run ends when coverage is complete;
+unavailable mechanisms are reported without approximation.
+
+Every tree refresh also generates `research_tree.md`, a Mermaid flowchart with
+colour-coded incumbent, accepted, rejected, failed, and deferred branches. Open
+that file in GitHub or use **Markdown: Open Preview** in VS Code to view the
+interactive rendered diagram; the chart is derived only from the JSON/JSONL
+evidence and does not create research state of its own. To keep large runs
+readable, the diagram shows the twelve most recent unresolved hypotheses and
+links to the JSON snapshot for the complete archive.
+
+Regenerate the diagram for an older artifact directory with:
+
+```bash
+.venv/bin/python -m research_agent.visualize_tree --artifact-dir runs_full_20_phase7
+```
+
+Every experiment is independently audited by a semantic critic. Before
+training, it binds the hypothesis and claimed mechanism to a named executable
+implementation and the actual configuration diff. After all fidelity and seed
+stages, deterministic artifact checks and an independent LLM auditor verify
+that the conceptual setting stayed fixed, the patch exists, and the measured
+validation evidence belongs to that experiment. The complete
+trace is stored in each iteration's `semantic_review` and summarized in planner
+memory. A failed semantic audit cannot train at the pre-run gate or replace the
+incumbent at the post-run gate. Offline runs retain all deterministic checks and
+skip only the LLM judgment.
+
+Planner prompts receive compact tree and coverage summaries. Each generic
+implementer receives only its assigned hypothesis, strategy, executable
+registry, two recent evidence records, and relevant authority/critic
+constraints—not the complete slate or governance history. The LLM semantic
+audit receives a compact best-stage correspondence trace and is capped at 1400
+output tokens; full diagnostics remain available in local artifacts.
+
+Critic decisions are active planner memory rather than terminal log messages.
+Every pre-run and post-run audit appends a compact record to
+`critic_feedback.jsonl`; `critic_memory.json` groups alignment repairs,
+execution failures, valid negative results, and supported lineages. The next
+planner and implementer calls receive those lessons as binding constraints. The
+pre-run critic additionally verifies one-factor configuration diffs and online
+hypothesis lineage references. The post-run critic independently recomputes
+the official primary metric relationship and labels evidence as supporting,
+valid-negative, execution failure, or semantic misalignment.
+
+Before each planning batch, the orchestrator also receives compact governance
+context: the benchmark contract, architecture-document digest, recorded human
+interventions, and recent errors/recoveries. Finalization reconstructs the
+architecture recorded in the selected checkpoint and writes `readiness.json`.
+The final Markdown report exposes `readiness_passed` and lists missing evidence
+instead of presenting an incomplete run as submission-ready.
+
+For a deterministic run that does not use an API key:
+
+```bash
+.venv/bin/python -m research_agent.run_research --planner offline --cycles 2 --artifact-dir runs_offline
+```
+
+For the required failure/recovery demonstration, use explicit demo mode. The
+first candidate intentionally crashes inside the isolated runner; the controller
+logs the failure, restores the accepted baseline, and continues normal research:
+
+```bash
+.venv/bin/python -m research_agent.run_research --planner offline --demo-failure --cycles 2 --artifact-dir runs_demo
+```
 
 `--data_dir` 默认 `./KuaiRand-Pure/data`；数据放在别处时显式指定。
 

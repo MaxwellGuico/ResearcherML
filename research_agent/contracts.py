@@ -4,6 +4,8 @@ This module intentionally contains no data loading, model training, or metric
 implementation. Those responsibilities remain in data.py and evaluate.py.
 """
 from dataclasses import dataclass
+import hashlib
+from typing import Any
 from pathlib import Path
 
 
@@ -21,7 +23,7 @@ class BenchmarkContract:
     primary_metric: str = "primary"
     improvement_threshold: float = 0.002
     non_improvement_limit: int = 3
-    target_primary: float = 0.65
+    target_primary: float = 0.70
     max_experiments: int = 20
 
     @property
@@ -40,3 +42,22 @@ class BenchmarkContract:
 
 
 BENCHMARK_CONTRACT = BenchmarkContract()
+
+
+def verify_benchmark_inputs(contract: BenchmarkContract) -> dict[str, Any]:
+    """Verify the data/evaluator identity before an autonomous run begins."""
+    from data import load
+
+    splits = load(str(contract.data_dir))
+    expected_rows = {"train": 1_141_112, "valid": 124_909, "test": 170_588}
+    actual_rows = {name: len(splits[name]) for name in expected_rows}
+    if actual_rows != expected_rows:
+        raise ValueError(f"unexpected benchmark split sizes: {actual_rows} != {expected_rows}")
+    root = Path(__file__).resolve().parent.parent
+    evaluator = root / "evaluate.py"
+    return {
+        "data_dir": str(contract.data_dir),
+        "split_rows": actual_rows,
+        "evaluator_sha256": hashlib.sha256(evaluator.read_bytes()).hexdigest(),
+        "label": contract.label,
+    }
